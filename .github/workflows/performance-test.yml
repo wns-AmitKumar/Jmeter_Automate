@@ -1,41 +1,62 @@
-name: Run JMeter Test
+name: JMeter Performance Test
 
 on:
+  # Manual trigger
   workflow_dispatch:
 
+  # Run automatically when code is pushed to main
+  push:
+    branches:
+      - main
+
+  # Run every day at 02:00 UTC
+  schedule:
+    - cron: '0 2 * * *'
+
 jobs:
-
   performance-test:
-
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-    - name: Install Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: 17
+      - name: Install Apache JMeter
+        run: |
+          wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
+          tar -xzf apache-jmeter-5.6.3.tgz
 
-    - name: Install JMeter
-      run: |
-        wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
-        tar -xzf apache-jmeter-5.6.3.tgz
+      - name: Verify Repository Files
+        run: |
+          echo "Current Directory:"
+          pwd
+          echo ""
+          echo "Repository Structure:"
+          ls -R
 
-    - name: Run Test
-      run: |
-        apache-jmeter-5.6.3/bin/jmeter \
-        -n \
-        -t jmeter/blazedemo.jmx \
-        -l results.jtl \
-        -e \
-        -o reports
+      - name: Run JMeter Test
+        run: |
+          apache-jmeter-5.6.3/bin/jmeter \
+          -n \
+          -t jmeter/blazedemo.jmx \
+          -l results.jtl \
+          -e \
+          -o reports
 
-    - name: Upload Report
-      uses: actions/upload-artifact@v4
-      with:
-        name: JMeter-Report
-        path: reports/
+      - name: Upload HTML Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: JMeter-HTML-Report
+          path: reports/
+
+      - name: Upload JTL Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: JMeter-JTL
+          path: results.jtl
