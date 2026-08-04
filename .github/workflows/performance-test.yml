@@ -44,7 +44,7 @@ jobs:
         run: |
           apache-jmeter-5.6.3/bin/jmeter \
           -n \
-          -t jmeter/blazedemo.jmx \
+          -t jmeter/LoginTest.jmx \
           -l results.jtl \
           -e \
           -o reports
