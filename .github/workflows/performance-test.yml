@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - blazedemo.jmx
+          - Booking_R1.5_MALUAT_21July_RevertChanges_UpdatedColumns.jmx
           # Add more JMeter scripts below as required
           # - login-test.jmx
           # - load-test.jmx
