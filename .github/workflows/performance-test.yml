@@ -3,6 +3,17 @@ name: JMeter Performance Test
 on:
   # Manual trigger
   workflow_dispatch:
+    inputs:
+      test_script:
+        description: 'Select the JMeter test script to execute'
+        required: true
+        type: choice
+        options:
+          - blazedemo.jmx
+          # Add more JMeter scripts below as required
+          # - login-test.jmx
+          # - load-test.jmx
+          # - stress-test.jmx
 
   # Run automatically when code is pushed to main
   push:
@@ -40,22 +51,38 @@ jobs:
           echo "Repository Structure:"
           ls -R
 
+      - name: Select JMeter Test Script
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Selected test script: ${{ inputs.test_script }}"
+            echo "TEST_SCRIPT=${{ inputs.test_script }}" >> "$GITHUB_ENV"
+          else
+            echo "Automatic execution detected."
+            echo "TEST_SCRIPT=blazedemo.jmx" >> "$GITHUB_ENV"
+          fi
+
       - name: Run JMeter Test
         run: |
+          mkdir -p reports
+
+          echo "Running JMeter test: $TEST_SCRIPT"
+
           apache-jmeter-5.6.3/bin/jmeter \
-          -n \
-          -t jmeter/blazedemo.jmx \
-          -l results.jtl \
-          -e \
-          -o reports
+            -n \
+            -t "jmeter/$TEST_SCRIPT" \
+            -l results.jtl \
+            -e \
+            -o reports
 
       - name: Upload HTML Report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: JMeter-HTML-Report
           path: reports/
 
       - name: Upload JTL Results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: JMeter-JTL
