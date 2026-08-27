@@ -16,6 +16,12 @@ on:
           # - load-test.jmx
           # - stress-test.jmx
 
+      result_file_name:
+        description: 'Enter the JMeter result file name'
+        required: true
+        type: string
+        default: 'results.jtl'
+
   # Run automatically when code is pushed to main
   push:
     branches:
@@ -30,20 +36,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # Set up Java
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+      # Install Apache JMeter
       - name: Install Apache JMeter
         run: |
           wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
           tar -xzf apache-jmeter-5.6.3.tgz
 
+      # Verify Repository Files
       - name: Verify Repository Files
         run: |
           echo "Current Directory:"
@@ -52,6 +63,7 @@ jobs:
           echo "Repository Structure:"
           ls -R
 
+      # Select JMeter Test Script
       - name: Select JMeter Test Script
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -62,19 +74,34 @@ jobs:
             echo "TEST_SCRIPT=blazedemo.jmx" >> "$GITHUB_ENV"
           fi
 
+      # Run JMeter Test
       - name: Run JMeter Test
         run: |
           mkdir -p reports
 
-          echo "Running JMeter test: $TEST_SCRIPT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RESULT_FILE="${{ inputs.result_file_name }}"
+          else
+            RESULT_FILE="results.jtl"
+          fi
+
+          echo "========================================="
+          echo "JMeter Performance Test"
+          echo "========================================="
+          echo "Test Script : $TEST_SCRIPT"
+          echo "Result File : $RESULT_FILE"
+          echo "========================================="
 
           apache-jmeter-5.6.3/bin/jmeter \
             -n \
             -t "jmeter/$TEST_SCRIPT" \
-            -l results.jtl \
+            -l "$RESULT_FILE" \
             -e \
             -o reports
 
+          echo "RESULT_FILE=$RESULT_FILE" >> "$GITHUB_ENV"
+
+      # Upload HTML Report
       - name: Upload HTML Report
         if: always()
         uses: actions/upload-artifact@v4
@@ -82,9 +109,10 @@ jobs:
           name: JMeter-HTML-Report
           path: reports/
 
+      # Upload JTL Results
       - name: Upload JTL Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: JMeter-JTL
-          path: results.jtl
+          path: ${{ env.RESULT_FILE }}
