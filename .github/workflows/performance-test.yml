@@ -1,11 +1,10 @@
 name: JMeter Performance Test
 
 on:
-  # Manual trigger
   workflow_dispatch:
     inputs:
       test_script:
-        description: 'Select the JMeter test script to execute'
+        description: "Select the JMeter test script to execute"
         required: true
         type: choice
         options:
@@ -13,29 +12,17 @@ on:
           - Booking_R1.5_MALUAT_21July_RevertChanges_UpdatedColumns.jmx
 
       result_file_name:
-        description: 'Enter the JMeter result file name'
+        description: "Enter the JMeter result file name"
         required: true
         type: string
-        default: 'results.jtl'
+        default: "results.jtl"
 
-      jar_set:
-        description: 'Select the custom JAR set'
-        required: true
-        type: choice
-        default: 'none'
-        options:
-          - none
-          - appian
-          - other-tool
-
-  # Run automatically when code is pushed to main
   push:
     branches:
       - main
 
-  # Run every day at 02:00 UTC
   schedule:
-    - cron: '0 2 * * *'
+    - cron: "0 2 * * *"
 
 
 jobs:
@@ -44,129 +31,88 @@ jobs:
 
     steps:
 
-      # Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
 
-      # Set up Java
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: '17'
+          distribution: "temurin"
+          java-version: "17"
 
 
-      # Install Apache JMeter
       - name: Install Apache JMeter
         run: |
-          wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
+          wget -q https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
           tar -xzf apache-jmeter-5.6.3.tgz
 
-
-      # Verify Repository Files
-      - name: Verify Repository Files
-        run: |
-          echo "Current Directory:"
-          pwd
-
-          echo ""
-          echo "Repository Structure:"
-          ls -R
+          echo "JMeter installed successfully"
+          apache-jmeter-5.6.3/bin/jmeter --version
 
 
-      # Select JMeter Test Script
       - name: Select JMeter Test Script
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Selected test script: ${{ inputs.test_script }}"
             echo "TEST_SCRIPT=${{ inputs.test_script }}" >> "$GITHUB_ENV"
           else
-            echo "Automatic execution detected."
             echo "TEST_SCRIPT=blazedemo.jmx" >> "$GITHUB_ENV"
           fi
 
+          echo "Selected test script: ${{ inputs.test_script }}"
 
-      # Select Custom JAR Set
-      - name: Select Custom JAR Set
+
+      - name: Install Appian JAR Files
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            JAR_SET="${{ inputs.jar_set }}"
-          else
-            JAR_SET="none"
-          fi
+          JAR_DIRECTORY="jars"
+          JMETER_EXT="apache-jmeter-5.6.3/lib/ext"
 
-          echo "JAR_SET=$JAR_SET" >> "$GITHUB_ENV"
-          echo "Selected JAR set: $JAR_SET"
-
-
-      # Install Custom JAR Files
-      - name: Install Custom JAR Files
-        run: |
-          if [ "$JAR_SET" = "none" ]; then
-            echo "No custom JAR files required."
-            exit 0
-          fi
-
-          JAR_DIRECTORY="jars/$JAR_SET"
+          echo "=========================================="
+          echo "Installing Appian JAR files"
+          echo "=========================================="
 
           if [ ! -d "$JAR_DIRECTORY" ]; then
-            echo "ERROR: JAR directory does not exist: $JAR_DIRECTORY"
+            echo "ERROR: Appian JAR directory does not exist:"
+            echo "$JAR_DIRECTORY"
             exit 1
           fi
 
-          if [ "$JAR_SET" = "appian" ]; then
-            APPIAN_JAR="$JAR_DIRECTORY/AppianJsonParser-20.2.0-SNAPSHOT.jar"
-            JMETER_HTTP_JAR="$JAR_DIRECTORY/ApacheJMeter_http.jar"
+          echo "JAR directory found:"
+          ls -lh "$JAR_DIRECTORY"
 
-            echo "Checking required Appian JAR files..."
+          echo "Copying Appian JAR files to JMeter lib/ext..."
 
-            if [ ! -f "$APPIAN_JAR" ]; then
-              echo "ERROR: Required JAR not found: $APPIAN_JAR"
-              exit 1
-            fi
+          cp "$JAR_DIRECTORY/AppianJsonParser-20.2.0-SNAPSHOT.jar" "$JMETER_EXT/"
+          cp "$JAR_DIRECTORY/ApacheJMeter_http.jar" "$JMETER_EXT/"
 
-            if [ ! -f "$JMETER_HTTP_JAR" ]; then
-              echo "ERROR: Required JAR not found: $JMETER_HTTP_JAR"
-              exit 1
-            fi
+          echo "JAR files installed successfully."
 
-            echo "Installing Appian JAR files:"
-            echo " - AppianJsonParser-20.2.0-SNAPSHOT.jar"
-            echo " - ApacheJMeter_http.jar"
-
-            cp "$APPIAN_JAR" apache-jmeter-5.6.3/lib/ext/
-            cp "$JMETER_HTTP_JAR" apache-jmeter-5.6.3/lib/ext/
-          else
-            echo "Installing JAR files from $JAR_DIRECTORY"
-            cp "$JAR_DIRECTORY"/*.jar apache-jmeter-5.6.3/lib/ext/
-          fi
-
-          echo ""
-          echo "Installed JAR files:"
-          ls -lh apache-jmeter-5.6.3/lib/ext/*.jar
+          echo "Installed Appian JAR files:"
+          ls -lh "$JMETER_EXT/AppianJsonParser-20.2.0-SNAPSHOT.jar"
+          ls -lh "$JMETER_EXT/ApacheJMeter_http.jar"
 
 
-      # Verify Appian JAR Installation
       - name: Verify Appian JAR Installation
-        if: env.JAR_SET == 'appian'
         run: |
-          echo "Verifying Appian JAR installation..."
+          JMETER_EXT="apache-jmeter-5.6.3/lib/ext"
 
-          test -f apache-jmeter-5.6.3/lib/ext/AppianJsonParser-20.2.0-SNAPSHOT.jar || {
-            echo "ERROR: AppianJsonParser JAR was not installed."
+          echo "=========================================="
+          echo "Verifying Appian JAR installation"
+          echo "=========================================="
+
+          if [ ! -f "$JMETER_EXT/AppianJsonParser-20.2.0-SNAPSHOT.jar" ]; then
+            echo "ERROR: AppianJsonParser-20.2.0-SNAPSHOT.jar not found"
             exit 1
-          }
+          fi
 
-          test -f apache-jmeter-5.6.3/lib/ext/ApacheJMeter_http.jar || {
-            echo "ERROR: ApacheJMeter_http.jar was not installed."
+          if [ ! -f "$JMETER_EXT/ApacheJMeter_http.jar" ]; then
+            echo "ERROR: ApacheJMeter_http.jar not found"
             exit 1
-          }
+          fi
 
-          echo "Both Appian-related JAR files are installed successfully."
+          echo "Both Appian JAR files are installed successfully."
 
 
-      # Run JMeter Test
       - name: Run JMeter Test
         run: |
           mkdir -p reports
@@ -177,13 +123,12 @@ jobs:
             RESULT_FILE="results.jtl"
           fi
 
-          echo "========================================="
+          echo "=========================================="
           echo "JMeter Performance Test"
-          echo "========================================="
+          echo "=========================================="
           echo "Test Script : $TEST_SCRIPT"
           echo "Result File : $RESULT_FILE"
-          echo "JAR Set     : $JAR_SET"
-          echo "========================================="
+          echo "=========================================="
 
           apache-jmeter-5.6.3/bin/jmeter \
             -n \
@@ -194,8 +139,9 @@ jobs:
 
           echo "RESULT_FILE=$RESULT_FILE" >> "$GITHUB_ENV"
 
+          echo "JMeter test completed successfully."
 
-      # Upload HTML Report
+
       - name: Upload HTML Report
         if: always()
         uses: actions/upload-artifact@v4
@@ -204,7 +150,6 @@ jobs:
           path: reports/
 
 
-      # Upload JTL Results
       - name: Upload JTL Results
         if: always()
         uses: actions/upload-artifact@v4
