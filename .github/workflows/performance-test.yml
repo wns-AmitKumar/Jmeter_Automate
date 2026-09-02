@@ -97,7 +97,6 @@ jobs:
           fi
 
           echo "JAR_SET=$JAR_SET" >> "$GITHUB_ENV"
-
           echo "Selected JAR set: $JAR_SET"
 
 
@@ -116,14 +115,55 @@ jobs:
             exit 1
           fi
 
-          echo "Copying JAR files from:"
-          echo "$JAR_DIRECTORY"
+          if [ "$JAR_SET" = "appian" ]; then
+            APPIAN_JAR="$JAR_DIRECTORY/AppianJsonParser-20.2.0-SNAPSHOT.jar"
+            JMETER_HTTP_JAR="$JAR_DIRECTORY/ApacheJMeter_http.jar"
 
-          cp "$JAR_DIRECTORY"/*.jar apache-jmeter-5.6.3/lib/
+            echo "Checking required Appian JAR files..."
+
+            if [ ! -f "$APPIAN_JAR" ]; then
+              echo "ERROR: Required JAR not found: $APPIAN_JAR"
+              exit 1
+            fi
+
+            if [ ! -f "$JMETER_HTTP_JAR" ]; then
+              echo "ERROR: Required JAR not found: $JMETER_HTTP_JAR"
+              exit 1
+            fi
+
+            echo "Installing Appian JAR files:"
+            echo " - AppianJsonParser-20.2.0-SNAPSHOT.jar"
+            echo " - ApacheJMeter_http.jar"
+
+            cp "$APPIAN_JAR" apache-jmeter-5.6.3/lib/ext/
+            cp "$JMETER_HTTP_JAR" apache-jmeter-5.6.3/lib/ext/
+          else
+            echo "Installing JAR files from $JAR_DIRECTORY"
+            cp "$JAR_DIRECTORY"/*.jar apache-jmeter-5.6.3/lib/ext/
+          fi
 
           echo ""
-          echo "Installed custom JAR files:"
-          ls -lh apache-jmeter-5.6.3/lib/*.jar
+          echo "Installed JAR files:"
+          ls -lh apache-jmeter-5.6.3/lib/ext/*.jar
+
+
+      # Verify Appian JAR Installation
+      - name: Verify Appian JAR Installation
+        if: env.JAR_SET == 'appian'
+        run: |
+          echo "Verifying Appian JAR installation..."
+
+          test -f apache-jmeter-5.6.3/lib/ext/AppianJsonParser-20.2.0-SNAPSHOT.jar || {
+            echo "ERROR: AppianJsonParser JAR was not installed."
+            exit 1
+          }
+
+          test -f apache-jmeter-5.6.3/lib/ext/ApacheJMeter_http.jar || {
+            echo "ERROR: ApacheJMeter_http.jar was not installed."
+            exit 1
+          }
+
+          echo "Both Appian-related JAR files are installed successfully."
 
 
       # Run JMeter Test
