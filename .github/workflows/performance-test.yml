@@ -11,16 +11,22 @@ on:
         options:
           - blazedemo.jmx
           - Booking_R1.5_MALUAT_21July_RevertChanges_UpdatedColumns.jmx
-          # Add more JMeter scripts below as required
-          # - login-test.jmx
-          # - load-test.jmx
-          # - stress-test.jmx
 
       result_file_name:
         description: 'Enter the JMeter result file name'
         required: true
         type: string
         default: 'results.jtl'
+
+      jar_set:
+        description: 'Select the custom JAR set'
+        required: true
+        type: choice
+        default: 'none'
+        options:
+          - none
+          - appian
+          - other-tool
 
   # Run automatically when code is pushed to main
   push:
@@ -30,6 +36,7 @@ on:
   # Run every day at 02:00 UTC
   schedule:
     - cron: '0 2 * * *'
+
 
 jobs:
   performance-test:
@@ -41,6 +48,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+
       # Set up Java
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -48,20 +56,24 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+
       # Install Apache JMeter
       - name: Install Apache JMeter
         run: |
           wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
           tar -xzf apache-jmeter-5.6.3.tgz
 
+
       # Verify Repository Files
       - name: Verify Repository Files
         run: |
           echo "Current Directory:"
           pwd
+
           echo ""
           echo "Repository Structure:"
           ls -R
+
 
       # Select JMeter Test Script
       - name: Select JMeter Test Script
@@ -73,6 +85,46 @@ jobs:
             echo "Automatic execution detected."
             echo "TEST_SCRIPT=blazedemo.jmx" >> "$GITHUB_ENV"
           fi
+
+
+      # Select Custom JAR Set
+      - name: Select Custom JAR Set
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            JAR_SET="${{ inputs.jar_set }}"
+          else
+            JAR_SET="none"
+          fi
+
+          echo "JAR_SET=$JAR_SET" >> "$GITHUB_ENV"
+
+          echo "Selected JAR set: $JAR_SET"
+
+
+      # Install Custom JAR Files
+      - name: Install Custom JAR Files
+        run: |
+          if [ "$JAR_SET" = "none" ]; then
+            echo "No custom JAR files required."
+            exit 0
+          fi
+
+          JAR_DIRECTORY="jars/$JAR_SET"
+
+          if [ ! -d "$JAR_DIRECTORY" ]; then
+            echo "ERROR: JAR directory does not exist: $JAR_DIRECTORY"
+            exit 1
+          fi
+
+          echo "Copying JAR files from:"
+          echo "$JAR_DIRECTORY"
+
+          cp "$JAR_DIRECTORY"/*.jar apache-jmeter-5.6.3/lib/
+
+          echo ""
+          echo "Installed custom JAR files:"
+          ls -lh apache-jmeter-5.6.3/lib/*.jar
+
 
       # Run JMeter Test
       - name: Run JMeter Test
@@ -90,6 +142,7 @@ jobs:
           echo "========================================="
           echo "Test Script : $TEST_SCRIPT"
           echo "Result File : $RESULT_FILE"
+          echo "JAR Set     : $JAR_SET"
           echo "========================================="
 
           apache-jmeter-5.6.3/bin/jmeter \
@@ -101,6 +154,7 @@ jobs:
 
           echo "RESULT_FILE=$RESULT_FILE" >> "$GITHUB_ENV"
 
+
       # Upload HTML Report
       - name: Upload HTML Report
         if: always()
@@ -108,6 +162,7 @@ jobs:
         with:
           name: JMeter-HTML-Report
           path: reports/
+
 
       # Upload JTL Results
       - name: Upload JTL Results
