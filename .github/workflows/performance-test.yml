@@ -26,14 +26,24 @@ on:
 
 
 jobs:
+
   performance-test:
+
     runs-on: ubuntu-latest
 
     steps:
 
+      # ==========================================
+      # CHECKOUT
+      # ==========================================
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+
+      # ==========================================
+      # JAVA
+      # ==========================================
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -42,28 +52,43 @@ jobs:
           java-version: "17"
 
 
+      # ==========================================
+      # JMETER
+      # ==========================================
+
       - name: Install Apache JMeter
         run: |
           wget -q https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
           tar -xzf apache-jmeter-5.6.3.tgz
 
           echo "JMeter installed successfully"
+
           apache-jmeter-5.6.3/bin/jmeter --version
 
 
+      # ==========================================
+      # SELECT TEST SCRIPT
+      # ==========================================
+
       - name: Select JMeter Test Script
         run: |
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "TEST_SCRIPT=${{ inputs.test_script }}" >> "$GITHUB_ENV"
           else
             echo "TEST_SCRIPT=blazedemo.jmx" >> "$GITHUB_ENV"
           fi
 
-          echo "Selected test script: ${{ inputs.test_script }}"
+          echo "Selected test script: $TEST_SCRIPT"
 
+
+      # ==========================================
+      # INSTALL APPPIAN JARS
+      # ==========================================
 
       - name: Install Appian JAR Files
         run: |
+
           JAR_DIRECTORY="jars"
           JMETER_EXT="apache-jmeter-5.6.3/lib/ext"
 
@@ -77,44 +102,34 @@ jobs:
             exit 1
           fi
 
-          echo "JAR directory found:"
-          ls -lh "$JAR_DIRECTORY"
-
-          echo "Copying Appian JAR files to JMeter lib/ext..."
-
           cp "$JAR_DIRECTORY/AppianJsonParser-20.2.0-SNAPSHOT.jar" "$JMETER_EXT/"
           cp "$JAR_DIRECTORY/ApacheJMeter_http.jar" "$JMETER_EXT/"
 
           echo "JAR files installed successfully."
 
-          echo "Installed Appian JAR files:"
-          ls -lh "$JMETER_EXT/AppianJsonParser-20.2.0-SNAPSHOT.jar"
-          ls -lh "$JMETER_EXT/ApacheJMeter_http.jar"
 
+      # ==========================================
+      # VERIFY JARS
+      # ==========================================
 
       - name: Verify Appian JAR Installation
         run: |
+
           JMETER_EXT="apache-jmeter-5.6.3/lib/ext"
 
-          echo "=========================================="
-          echo "Verifying Appian JAR installation"
-          echo "=========================================="
-
-          if [ ! -f "$JMETER_EXT/AppianJsonParser-20.2.0-SNAPSHOT.jar" ]; then
-            echo "ERROR: AppianJsonParser-20.2.0-SNAPSHOT.jar not found"
-            exit 1
-          fi
-
-          if [ ! -f "$JMETER_EXT/ApacheJMeter_http.jar" ]; then
-            echo "ERROR: ApacheJMeter_http.jar not found"
-            exit 1
-          fi
+          test -f "$JMETER_EXT/AppianJsonParser-20.2.0-SNAPSHOT.jar"
+          test -f "$JMETER_EXT/ApacheJMeter_http.jar"
 
           echo "Both Appian JAR files are installed successfully."
 
 
+      # ==========================================
+      # RUN JMETER
+      # ==========================================
+
       - name: Run JMeter Test
         run: |
+
           mkdir -p reports
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -142,13 +157,71 @@ jobs:
           echo "JMeter test completed successfully."
 
 
-      - name: Upload HTML Report
+      # ==========================================
+      # PREPARE CUSTOM DASHBOARD
+      # ==========================================
+
+      - name: Prepare Custom Dashboard
+        if: always()
+        run: |
+
+          mkdir -p custom-dashboard
+
+          cp -r dashboard/* custom-dashboard/
+
+          echo "Dashboard files:"
+          find custom-dashboard -type f
+
+
+      # ==========================================
+      # COPY JTL INTO DASHBOARD
+      # ==========================================
+
+      - name: Add JTL to Custom Dashboard
+        if: always()
+        run: |
+
+          if [ -f "$RESULT_FILE" ]; then
+
+            cp "$RESULT_FILE" custom-dashboard/results.jtl
+
+            echo "JTL copied to dashboard:"
+            ls -lh custom-dashboard/results.jtl
+
+          else
+
+            echo "JTL file not found."
+
+          fi
+
+
+      # ==========================================
+      # UPLOAD JMETER REPORT
+      # ==========================================
+
+      - name: Upload JMeter HTML Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: JMeter-HTML-Report
           path: reports/
 
+
+      # ==========================================
+      # UPLOAD CUSTOM DASHBOARD
+      # ==========================================
+
+      - name: Upload Custom Dashboard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: JMeter-Custom-Dashboard
+          path: custom-dashboard/
+
+
+      # ==========================================
+      # UPLOAD JTL
+      # ==========================================
 
       - name: Upload JTL Results
         if: always()
