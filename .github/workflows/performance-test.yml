@@ -4,18 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       test_script:
-        description: "Select the JMeter test script to execute"
+        description: "Select JMeter test script"
         required: true
+        default: "blazedemo.jmx"
         type: choice
         options:
           - blazedemo.jmx
           - Booking_R1.5_MALUAT_21July_RevertChanges_UpdatedColumns.jmx
 
       result_file_name:
-        description: "Enter the JMeter result file name"
+        description: "JTL result file name"
         required: true
-        type: string
         default: "results.jtl"
+        type: string
 
   push:
     branches:
@@ -24,208 +25,272 @@ on:
   schedule:
     - cron: "0 2 * * *"
 
-
 jobs:
-
   performance-test:
-
+    name: Run JMeter Performance Test
     runs-on: ubuntu-latest
 
+    env:
+      JMETER_VERSION: "5.6.3"
+      JMETER_HOME: "apache-jmeter-5.6.3"
+
     steps:
-
-      # ==========================================
-      # CHECKOUT
-      # ==========================================
-
-      - name: Checkout Repository
+      # ------------------------------------------------------------
+      # 1. Checkout repository
+      # ------------------------------------------------------------
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      # ==========================================
-      # JAVA
-      # ==========================================
-
-      - name: Set up Java
+      # ------------------------------------------------------------
+      # 2. Setup Java
+      # ------------------------------------------------------------
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
+          distribution: temurin
           java-version: "17"
 
-
-      # ==========================================
-      # JMETER
-      # ==========================================
-
+      # ------------------------------------------------------------
+      # 3. Install Apache JMeter
+      # ------------------------------------------------------------
       - name: Install Apache JMeter
+        shell: bash
         run: |
-          wget -q https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
-          tar -xzf apache-jmeter-5.6.3.tgz
+          wget -q "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz"
+          tar -xzf "apache-jmeter-${JMETER_VERSION}.tgz"
+          rm "apache-jmeter-${JMETER_VERSION}.tgz"
 
-          echo "JMeter installed successfully"
+          chmod +x "${JMETER_HOME}/bin/jmeter"
 
-          apache-jmeter-5.6.3/bin/jmeter --version
+          echo "JMeter installed:"
+          "${JMETER_HOME}/bin/jmeter" --version
 
-
-      # ==========================================
-      # SELECT TEST SCRIPT
-      # ==========================================
-
-      - name: Select JMeter Test Script
+      # ------------------------------------------------------------
+      # 4. Add Appian custom JAR files automatically
+      # ------------------------------------------------------------
+      - name: Install Appian JARs
+        shell: bash
         run: |
+          mkdir -p "${JMETER_HOME}/lib/ext"
 
+          cp "jars/AppianJsonParser-20.2.0-SNAPSHOT.jar" \
+             "${JMETER_HOME}/lib/ext/"
+
+          cp "jars/ApacheJMeter_http.jar" \
+             "${JMETER_HOME}/lib/ext/"
+
+          echo "Installed JAR files:"
+          ls -lh "${JMETER_HOME}/lib/ext/" | grep -E \
+            "AppianJsonParser|ApacheJMeter_http"
+
+      # ------------------------------------------------------------
+      # 5. Select JMeter script
+      # ------------------------------------------------------------
+      - name: Select JMeter test script
+        shell: bash
+        run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "TEST_SCRIPT=${{ inputs.test_script }}" >> "$GITHUB_ENV"
-          else
-            echo "TEST_SCRIPT=blazedemo.jmx" >> "$GITHUB_ENV"
-          fi
-
-          echo "Selected test script: $TEST_SCRIPT"
-
-
-      # ==========================================
-      # INSTALL APPPIAN JARS
-      # ==========================================
-
-      - name: Install Appian JAR Files
-        run: |
-
-          JAR_DIRECTORY="jars"
-          JMETER_EXT="apache-jmeter-5.6.3/lib/ext"
-
-          echo "=========================================="
-          echo "Installing Appian JAR files"
-          echo "=========================================="
-
-          if [ ! -d "$JAR_DIRECTORY" ]; then
-            echo "ERROR: Appian JAR directory does not exist:"
-            echo "$JAR_DIRECTORY"
-            exit 1
-          fi
-
-          cp "$JAR_DIRECTORY/AppianJsonParser-20.2.0-SNAPSHOT.jar" "$JMETER_EXT/"
-          cp "$JAR_DIRECTORY/ApacheJMeter_http.jar" "$JMETER_EXT/"
-
-          echo "JAR files installed successfully."
-
-
-      # ==========================================
-      # VERIFY JARS
-      # ==========================================
-
-      - name: Verify Appian JAR Installation
-        run: |
-
-          JMETER_EXT="apache-jmeter-5.6.3/lib/ext"
-
-          test -f "$JMETER_EXT/AppianJsonParser-20.2.0-SNAPSHOT.jar"
-          test -f "$JMETER_EXT/ApacheJMeter_http.jar"
-
-          echo "Both Appian JAR files are installed successfully."
-
-
-      # ==========================================
-      # RUN JMETER
-      # ==========================================
-
-      - name: Run JMeter Test
-        run: |
-
-          mkdir -p reports
-
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TEST_SCRIPT="${{ inputs.test_script }}"
             RESULT_FILE="${{ inputs.result_file_name }}"
           else
+            TEST_SCRIPT="blazedemo.jmx"
             RESULT_FILE="results.jtl"
           fi
 
-          echo "=========================================="
-          echo "JMeter Performance Test"
-          echo "=========================================="
-          echo "Test Script : $TEST_SCRIPT"
-          echo "Result File : $RESULT_FILE"
-          echo "=========================================="
+          # Keep the result name as a simple file name.
+          RESULT_FILE="$(basename "$RESULT_FILE")"
 
-          apache-jmeter-5.6.3/bin/jmeter \
-            -n \
-            -t "jmeter/$TEST_SCRIPT" \
-            -l "$RESULT_FILE" \
-            -e \
-            -o reports
-
-          echo "RESULT_FILE=$RESULT_FILE" >> "$GITHUB_ENV"
-
-          echo "JMeter test completed successfully."
-
-
-      # ==========================================
-      # PREPARE CUSTOM DASHBOARD
-      # ==========================================
-
-      - name: Prepare Custom Dashboard
-        if: always()
-        run: |
-
-          mkdir -p custom-dashboard
-
-          cp -r dashboard/* custom-dashboard/
-
-          echo "Dashboard files:"
-          find custom-dashboard -type f
-
-
-      # ==========================================
-      # COPY JTL INTO DASHBOARD
-      # ==========================================
-
-      - name: Add JTL to Custom Dashboard
-        if: always()
-        run: |
-
-          if [ -f "$RESULT_FILE" ]; then
-
-            cp "$RESULT_FILE" custom-dashboard/results.jtl
-
-            echo "JTL copied to dashboard:"
-            ls -lh custom-dashboard/results.jtl
-
-          else
-
-            echo "JTL file not found."
-
+          if [ ! -f "jmeter/${TEST_SCRIPT}" ]; then
+            echo "ERROR: JMeter test script not found: jmeter/${TEST_SCRIPT}"
+            exit 1
           fi
 
+          mkdir -p results
 
-      # ==========================================
-      # UPLOAD JMETER REPORT
-      # ==========================================
+          echo "TEST_SCRIPT=${TEST_SCRIPT}" >> "$GITHUB_ENV"
+          echo "RESULT_FILE=results/${RESULT_FILE}" >> "$GITHUB_ENV"
 
+          echo "Selected test script: jmeter/${TEST_SCRIPT}"
+          echo "Result file: results/${RESULT_FILE}"
+
+      # ------------------------------------------------------------
+      # 6. Run JMeter
+      # ------------------------------------------------------------
+      - name: Run JMeter Test
+        shell: bash
+        run: |
+          rm -rf jmeter-report custom-dashboard
+          mkdir -p jmeter-report custom-dashboard
+
+          "${JMETER_HOME}/bin/jmeter" \
+            -n \
+            -t "jmeter/${TEST_SCRIPT}" \
+            -l "${RESULT_FILE}" \
+            -e \
+            -o jmeter-report
+
+      # ------------------------------------------------------------
+      # 7. Create self-contained custom dashboard
+      #
+      # The JTL is embedded inside the HTML as Base64. This means
+      # the downloaded index.html can be opened directly and the
+      # dashboard automatically loads the generated JTL.
+      # No Browse File action is required.
+      # ------------------------------------------------------------
+      - name: Build custom JMeter dashboard
+        if: always()
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import base64
+          from pathlib import Path
+
+          html_path = Path(
+              "dashboard/jmeter_dashboard_v5.0_Final_with_PDFExport.html"
+          )
+          jtl_path = Path("${RESULT_FILE}")
+          output_path = Path("custom-dashboard/index.html")
+
+          if not html_path.exists():
+              raise SystemExit(
+                  f"Dashboard HTML not found: {html_path}"
+              )
+
+          if not jtl_path.exists():
+              raise SystemExit(
+                  f"JTL file not found: {jtl_path}"
+              )
+
+          html = html_path.read_text(encoding="utf-8")
+          jtl_text = jtl_path.read_text(
+              encoding="utf-8",
+              errors="replace"
+          )
+
+          # Base64 avoids breaking the HTML/JavaScript if the JTL
+          # contains quotes, newlines, special characters, etc.
+          encoded_jtl = base64.b64encode(
+              jtl_text.encode("utf-8")
+          ).decode("ascii")
+
+          auto_load_script = f"""
+          <script id="ci-auto-load-jtl">
+          (function () {{
+              const embeddedJtlBase64 = "{encoded_jtl}";
+
+              function loadEmbeddedJtl() {{
+                  const input = document.getElementById("fileInput");
+
+                  if (!input) {{
+                      console.error(
+                          "CI dashboard: fileInput element was not found."
+                      );
+                      return;
+                  }}
+
+                  try {{
+                      const binary = atob(embeddedJtlBase64);
+                      const bytes = new Uint8Array(binary.length);
+
+                      for (let i = 0; i < binary.length; i++) {{
+                          bytes[i] = binary.charCodeAt(i);
+                      }}
+
+                      const file = new File(
+                          [bytes],
+                          "{jtl_path.name}",
+                          {{ type: "text/csv" }}
+                      );
+
+                      const dataTransfer = new DataTransfer();
+                      dataTransfer.items.add(file);
+                      input.files = dataTransfer.files;
+
+                      input.dispatchEvent(
+                          new Event("change", {{ bubbles: true }})
+                      );
+
+                      console.log(
+                          "CI dashboard: JTL loaded automatically:",
+                          "{jtl_path.name}"
+                      );
+                  }} catch (error) {{
+                      console.error(
+                          "CI dashboard: failed to load embedded JTL.",
+                          error
+                      );
+                  }}
+              }}
+
+              if (document.readyState === "loading") {{
+                  document.addEventListener(
+                      "DOMContentLoaded",
+                      loadEmbeddedJtl
+                  );
+              }} else {{
+                  loadEmbeddedJtl();
+              }}
+          }})();
+          </script>
+          """
+
+          marker = "</body>"
+          if marker.lower() not in html.lower():
+              raise SystemExit(
+                  "Dashboard HTML does not contain a closing </body> tag."
+              )
+
+          # Insert immediately before the final </body>.
+          position = html.lower().rfind(marker.lower())
+          final_html = (
+              html[:position]
+              + auto_load_script
+              + "\n"
+              + html[position:]
+          )
+
+          output_path.write_text(
+              final_html,
+              encoding="utf-8"
+          )
+
+          print(f"Created: {output_path}")
+          print(f"Embedded JTL: {jtl_path}")
+          print(
+              f"Dashboard size: "
+              f"{output_path.stat().st_size / 1024 / 1024:.2f} MB"
+          )
+          PY
+
+      # ------------------------------------------------------------
+      # 8. Upload standard JMeter HTML report
+      # ------------------------------------------------------------
       - name: Upload JMeter HTML Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: JMeter-HTML-Report
-          path: reports/
+          path: jmeter-report/
+          if-no-files-found: warn
 
-
-      # ==========================================
-      # UPLOAD CUSTOM DASHBOARD
-      # ==========================================
-
-      - name: Upload Custom Dashboard
+      # ------------------------------------------------------------
+      # 9. Upload self-contained custom dashboard
+      # ------------------------------------------------------------
+      - name: Upload Custom JMeter Dashboard
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: JMeter-Custom-Dashboard
-          path: custom-dashboard/
+          path: custom-dashboard/index.html
+          if-no-files-found: warn
 
-
-      # ==========================================
-      # UPLOAD JTL
-      # ==========================================
-
-      - name: Upload JTL Results
+      # ------------------------------------------------------------
+      # 10. Upload raw JTL result
+      # ------------------------------------------------------------
+      - name: Upload JMeter JTL
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: JMeter-JTL
-          path: ${{ env.RESULT_FILE }}
+          path: results/
+          if-no-files-found: warn
